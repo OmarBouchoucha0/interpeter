@@ -1,3 +1,4 @@
 .git
 .zig-out
 .zig-cache
+.vscode
