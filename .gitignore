@@ -1,4 +1,5 @@
-.git
-.zig-out
-.zig-cache
-.vscode
+.vscode/
+.zig-cache/
+zig-out/
+*.o
+*.obj
