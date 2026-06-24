@@ -1,7 +1,7 @@
 const std = @import("std");
 const print = std.debug.print;
 
-const TokenType = enum {
+pub const TokenType = enum {
     LEFT_PAREN,
     RIGHT_PAREN,
     LEFT_BRACE,
@@ -46,7 +46,7 @@ const TokenType = enum {
     EOF,
 };
 
-const Literal = union(enum) {
+pub const Literal = union(enum) {
     none: void,
     number: f64,
     string: []const u8,
