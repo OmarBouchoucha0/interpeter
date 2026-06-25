@@ -57,11 +57,11 @@ pub const Token = struct {
     t_type: TokenType,
     lexem: []const u8,
     literal: Literal,
-    line: u32,
+    row: u32,
     col: u32,
 
     pub fn printToken(self: Token) void {
-        print("[Line {d}:{d}] Type: {}, Lexeme: \"{s}\", Literal: ", .{ self.line, self.col, self.t_type, self.lexem });
+        print("[Line {d}:{d}] Type: {}, Lexeme: \"{s}\", Literal: ", .{ self.row, self.col, self.t_type, self.lexem });
 
         switch (self.literal) {
             .none => std.debug.print("null\n", .{}),

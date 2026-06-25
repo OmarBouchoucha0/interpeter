@@ -2,12 +2,12 @@ const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;
 const Literal = @import("token.zig").Literal;
 const std = @import("std");
-const ArrayListUnmanged = std.ArrayListUnmanaged;
+const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const Allocator = std.mem.Allocator;
 
 const Scanner = struct {
     source: []const u8,
-    items: ArrayListUnmanged(Token),
+    items: ArrayListUnmanaged(Token),
 
     pub fn init(source: []const u8) Scanner {
         return Scanner{ .source = source, .items = {} };
@@ -21,22 +21,25 @@ const Scanner = struct {
         try self.items.append(allocator, token);
     }
 
-    fn scanToken() void {
-        @panic("todo!");
-    }
-
-    pub fn scanTokens(self: *Scanner, allocator: Allocator) ArrayListUnmanged(Token) {
-        const tokens = std.mem.tokenizeAny(u8, self.source, " \n");
-        while (tokens.next()) |token| {
-            scanToken(self, allocator, token);
-        }
+    pub fn scanTokens(self: *Scanner, allocator: Allocator) !void {
         const eof_token = Token{
             .t_type = TokenType.EOF,
             .lexem = "",
             .literal = Literal{ .none = {} },
             .col = 1,
-            .line = 1,
+            .row = row,
         };
-        self.addToken(allocator, eof_token);
+        try self.addToken(allocator, eof_token);
+    }
+
+    fn scanToken(self: *Scanner, allocator: Allocator, token_u8: []const u8, row: u32, col: u32) !void {
+        const token = Token{
+            .t_type = ,
+            .lexem = ,
+            .literal = ,
+            .col = col,
+            .row = row,
+        };
+        try = self.addToken(allocator, token);
     }
 };
