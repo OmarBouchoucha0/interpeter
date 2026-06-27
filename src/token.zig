@@ -27,21 +27,22 @@ pub const TokenType = enum {
     STRING,
     NUMBER,
 
-    AND,
-    ELSE,
-    FALSE,
-    FN,
-    FOR,
-    IF,
-    NULL,
-    OR,
-    PRINT,
-    RETURN,
-    TRUE,
     VAR,
+    AND,
+    OR,
+    TRUE,
+    FALSE,
+    NULL,
+    IF,
+    ELSE,
+    FOR,
     WHILE,
     STRUCT,
     SELF,
+    FN,
+    RETURN,
+
+    PRINT,
 
     EOF,
 };
@@ -57,8 +58,8 @@ pub const Token = struct {
     t_type: TokenType,
     lexem: []const u8,
     literal: Literal,
-    row: u32,
-    col: u32,
+    row: usize,
+    col: usize,
 
     pub fn printToken(self: Token) void {
         print("[Line {d}:{d}] Type: {}, Lexeme: \"{s}\", Literal: ", .{ self.row, self.col, self.t_type, self.lexem });
