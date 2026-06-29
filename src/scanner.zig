@@ -4,11 +4,11 @@ const Literal = @import("token.zig").Literal;
 const std = @import("std");
 const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const Allocator = std.mem.Allocator;
+const testing = std.testing;
 
 const ScannerErrors = error{
     unClosedString,
     unknownToken,
-    wrongLength,
 };
 
 const Scanner = struct {
@@ -16,11 +16,14 @@ const Scanner = struct {
     items: ArrayListUnmanaged(Token),
 
     pub fn init(source: []const u8) Scanner {
-        return Scanner{ .source = source, .items = {} };
+        return Scanner{
+            .source = source,
+            .items = ArrayListUnmanaged(Token).empty,
+        };
     }
 
-    pub fn deinit(self: *Scanner) void {
-        self.items.deinit();
+    pub fn deinit(self: *Scanner, allocator: Allocator) void {
+        self.items.deinit(allocator);
     }
 
     pub fn addToken(self: *Scanner, allocator: Allocator, token: Token) !void {
@@ -32,81 +35,90 @@ const Scanner = struct {
         var curr: usize = 0;
         var row: usize = 1;
         var col: usize = 1;
-        var line_len: usize = 0;
+        var passed_lines_len: usize = 0;
         while (curr < self.source.len) {
-            //TODO:this logic needs to change it only accounts for the special chars and not the general indentifieers
             if (!std.ascii.isAlphanumeric(self.source[curr])) {
+                col = start - passed_lines_len;
+                try scanToken(self, allocator, self.source[start..curr], row, col);
                 switch (self.source[curr]) {
-                    ' ' => {
-                        scanToken(self, allocator, self.source[start..curr], row, col);
+                    ' ', '\r', '\t' => {
+                        // Do nothing! Let it fall through to curr += 1 at the end of the block.
                     },
                     '\n' => {
-                        line_len = curr;
+                        passed_lines_len += curr;
                         row += 1;
                         col = 1;
                     },
                     '"' => {
                         start = curr;
+                        if (curr == self.source.len - 1) {
+                            return ScannerErrors.unClosedString;
+                        }
                         curr += 1;
                         while (self.source[curr] != '"') {
-                            if (curr >= self.source.len) {
+                            if (curr >= self.source.len - 1) {
                                 return ScannerErrors.unClosedString;
                             }
                             curr += 1;
                         }
                         col = start;
-                        self.scanString(self, allocator, self.source[start .. curr + 1], row, col);
+                        try scanToken(self, allocator, self.source[start .. curr + 1], row, col);
                     },
                     '!' => {
+                        col += 1;
                         if (curr == self.source.len - 1) {
-                            return;
+                            try scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
                         } else {
                             if (self.source[curr + 1] == '=') {
-                                self.scanToken(self, allocator, self.source[curr .. curr + 2], row, col);
+                                try scanToken(self, allocator, self.source[curr .. curr + 2], row, col);
                                 curr += 1;
                             } else {
-                                self.scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
+                                try scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
                             }
                         }
                     },
                     '>' => {
+                        col += 1;
                         if (curr == self.source.len - 1) {
-                            return;
+                            try scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
                         } else {
                             if (self.source[curr + 1] == '=') {
-                                self.scanToken(self, allocator, self.source[curr .. curr + 2], row, col);
+                                try scanToken(self, allocator, self.source[curr .. curr + 2], row, col);
                                 curr += 1;
                             } else {
-                                self.scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
+                                try scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
                             }
                         }
                     },
                     '<' => {
+                        col += 1;
                         if (curr == self.source.len - 1) {
-                            return;
+                            try scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
                         } else {
                             if (self.source[curr + 1] == '=') {
-                                self.scanToken(self, allocator, self.source[curr .. curr + 2], row, col);
+                                try scanToken(self, allocator, self.source[curr .. curr + 2], row, col);
                                 curr += 1;
                             } else {
-                                self.scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
+                                try scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
                             }
                         }
                     },
                     '=' => {
+                        col += 1;
                         if (curr == self.source.len - 1) {
-                            return;
+                            try scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
                         } else {
                             if (self.source[curr + 1] == '=') {
-                                self.scanToken(self, allocator, self.source[curr .. curr + 2], row, col);
+                                try scanToken(self, allocator, self.source[curr .. curr + 2], row, col);
                                 curr += 1;
                             } else {
-                                self.scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
+                                try scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
                             }
                         }
                     },
                     else => {
-                        self.scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
+                        col += 1;
+                        try scanToken(self, allocator, self.source[curr .. curr + 1], row, col);
                     },
                 }
                 curr += 1;
@@ -115,6 +127,7 @@ const Scanner = struct {
                 curr += 1;
             }
         }
+
         const eof_token = Token{
             .t_type = TokenType.EOF,
             .lexem = "",
@@ -148,6 +161,27 @@ const Scanner = struct {
     }
 
     fn scanToken(self: *Scanner, allocator: Allocator, input: []const u8, row: usize, col: usize) !void {
+        if (input.len >= 0) {
+            return;
+        }
+
+        if (input[input.len - 1] == '"' and input[0] == '"') {
+            scanString(self, allocator, input, row, col);
+            return;
+        }
+
+        var numeric: bool = true;
+        for (input) |c| {
+            if (!std.ascii.isDigit(c)) {
+                numeric = false;
+                break;
+            }
+        }
+        if (numeric) {
+            scanNumber(self, allocator, input, row, col);
+            return;
+        }
+
         const TokenSymbol = enum {
             @"(",
             @")",
@@ -172,7 +206,7 @@ const Scanner = struct {
             @"and",
             @"or",
             true,
-            flase,
+            false,
             null,
             @"if",
             @"else",
@@ -184,7 +218,7 @@ const Scanner = struct {
             @"return",
             print,
         };
-        const t_type: TokenType = undefined;
+        var t_type: TokenType = undefined;
         const TokenSymbolEnum = std.meta.stringToEnum(TokenSymbol, input) orelse {
             t_type = TokenType.IDENTIFIER;
         };
@@ -203,14 +237,14 @@ const Scanner = struct {
             .@">" => TokenType.GREATER,
             .@"<" => TokenType.LESS,
             .@"==" => TokenType.EQUAL_EQUAL,
-            .@"!=" => TokenType.BANG_EQUALq,
+            .@"!=" => TokenType.BANG_EQUAL,
             .@">=" => TokenType.GREATER_EQUAL,
             .@"<=" => TokenType.LESS_EQUAL,
             .@"var" => TokenType.VAR,
             .@"and" => TokenType.AND,
             .@"or" => TokenType.OR,
             .true => TokenType.TRUE,
-            .flase => TokenType.FALSE,
+            .false => TokenType.FALSE,
             .null => TokenType.NULL,
             .@"if" => TokenType.IF,
             .@"else" => TokenType.ELSE,
@@ -233,3 +267,90 @@ const Scanner = struct {
         try self.addToken(allocator, token);
     }
 };
+
+test "Scanner - Basic Punctuation and Operators" {
+    const allocator = testing.allocator;
+    var scanner = Scanner.init("(){}+-*/=;!><");
+    defer scanner.deinit(allocator);
+
+    try scanner.scanSource(allocator);
+
+    // Expected token types sequence
+    const expected_types = [_]TokenType{
+        .LEFT_PAREN, .RIGHT_PAREN, .LEFT_BRACE, .RIGHT_BRACE,
+        .PLUS,       .MINUS,       .STAR,       .SLASH,
+        .EQUAL,      .SEMICOLON,   .BANG,       .GREATER,
+        .LESS,       .EOF,
+    };
+
+    try testing.expectEqual(expected_types.len, scanner.items.items.len);
+    for (expected_types, 0..) |expected_type, i| {
+        try testing.expectEqual(expected_type, scanner.items.items[i].t_type);
+    }
+}
+
+test "Scanner - Compound Comparison Operators" {
+    const allocator = testing.allocator;
+    var scanner = Scanner.init("== != >= <=");
+    defer scanner.deinit(allocator);
+
+    try scanner.scanSource(allocator);
+
+    const expected_types = [_]TokenType{
+        .EQUAL_EQUAL, .BANG_EQUAL, .GREATER_EQUAL, .LESS_EQUAL, .EOF,
+    };
+
+    try testing.expectEqual(expected_types.len, scanner.items.items.len);
+    for (expected_types, 0..) |expected_type, i| {
+        try testing.expectEqual(expected_type, scanner.items.items[i].t_type);
+    }
+}
+
+test "Scanner - Numbers and Strings Extraction" {
+    const allocator = testing.allocator;
+    var scanner = Scanner.init("12345 \"hello world\"");
+    defer scanner.deinit(allocator);
+
+    try scanner.scanSource(allocator);
+
+    try testing.expectEqual(@as(usize, 3), scanner.items.items.len); // NUMBER, STRING, EOF
+
+    // Validate Numeric Token
+    try testing.expectEqual(TokenType.NUMBER, scanner.items.items[0].t_type);
+    try testing.expectEqualStrings("12345", scanner.items.items[0].lexem);
+
+    // Validate String Token and Sliced Literal boundary
+    try testing.expectEqual(TokenType.STRING, scanner.items.items[1].t_type);
+    try testing.expectEqualStrings("\"hello world\"", scanner.items.items[1].lexem);
+    try testing.expectEqualStrings("hello world", scanner.items.items[1].literal.string);
+}
+
+test "Scanner - Complex Code Block and Keywords" {
+    const allocator = testing.allocator;
+    var scanner = Scanner.init("fn main() { var x = true; if (x) { return null; } }");
+    defer scanner.deinit(allocator);
+
+    try scanner.scanSource(allocator);
+
+    const expected = [_]TokenType{
+        .FN,     .IDENTIFIER, .LEFT_PAREN, .RIGHT_PAREN, .LEFT_BRACE,
+        .VAR,    .IDENTIFIER, .EQUAL,      .TRUE,        .SEMICOLON,
+        .IF,     .LEFT_PAREN, .IDENTIFIER, .RIGHT_PAREN, .LEFT_BRACE,
+        .RETURN, .NULL,       .SEMICOLON,  .RIGHT_BRACE, .RIGHT_BRACE,
+        .EOF,
+    };
+
+    try testing.expectEqual(expected.len, scanner.items.items.len);
+    for (expected, 0..) |expected_type, i| {
+        try testing.expectEqual(expected_type, scanner.items.items[i].t_type);
+    }
+}
+
+test "Scanner - Error Catching Unclosed Strings" {
+    const allocator = testing.allocator;
+    var scanner = Scanner.init("var str = \"unclosed string template");
+    defer scanner.deinit(allocator);
+
+    const result = scanner.scanSource(allocator);
+    try testing.expectError(ScannerErrors.unClosedString, result);
+}
