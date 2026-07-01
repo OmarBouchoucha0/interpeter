@@ -35,17 +35,17 @@ const Scanner = struct {
         var curr: usize = 0;
         var row: usize = 1;
         var col: usize = 1;
-        var passed_lines_len: usize = 0;
+        var prev_lines_len: usize = 0;
         while (curr < self.source.len) {
             if (!std.ascii.isAlphanumeric(self.source[curr])) {
-                col = start - passed_lines_len;
+                col = start - prev_lines_len;
                 try self.scanToken(allocator, self.source[start..curr], row, col);
                 switch (self.source[curr]) {
                     ' ', '\r', '\t' => {
                         // Do nothing! Let it fall through to curr += 1 at the end of the block.
                     },
                     '\n' => {
-                        passed_lines_len += curr;
+                        prev_lines_len += curr;
                         row += 1;
                         col = 1;
                     },
@@ -64,56 +64,13 @@ const Scanner = struct {
                         col = start;
                         try self.scanToken(allocator, self.source[start .. curr + 1], row, col);
                     },
-                    '!' => {
+                    '!', '>', '<', '=' => {
                         col += 1;
-                        if (curr == self.source.len - 1) {
-                            try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
+                        if (curr < self.source.len - 1 and self.source[curr + 1] == '=') {
+                            try self.scanToken(allocator, self.source[curr .. curr + 2], row, col);
+                            curr += 1; // Advance past the '='
                         } else {
-                            if (self.source[curr + 1] == '=') {
-                                try self.scanToken(allocator, self.source[curr .. curr + 2], row, col);
-                                curr += 1;
-                            } else {
-                                try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
-                            }
-                        }
-                    },
-                    '>' => {
-                        col += 1;
-                        if (curr == self.source.len - 1) {
                             try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
-                        } else {
-                            if (self.source[curr + 1] == '=') {
-                                try self.scanToken(allocator, self.source[curr .. curr + 2], row, col);
-                                curr += 1;
-                            } else {
-                                try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
-                            }
-                        }
-                    },
-                    '<' => {
-                        col += 1;
-                        if (curr == self.source.len - 1) {
-                            try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
-                        } else {
-                            if (self.source[curr + 1] == '=') {
-                                try self.scanToken(allocator, self.source[curr .. curr + 2], row, col);
-                                curr += 1;
-                            } else {
-                                try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
-                            }
-                        }
-                    },
-                    '=' => {
-                        col += 1;
-                        if (curr == self.source.len - 1) {
-                            try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
-                        } else {
-                            if (self.source[curr + 1] == '=') {
-                                try self.scanToken(allocator, self.source[curr .. curr + 2], row, col);
-                                curr += 1;
-                            } else {
-                                try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
-                            }
                         }
                     },
                     else => {
