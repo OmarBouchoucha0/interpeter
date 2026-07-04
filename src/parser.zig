@@ -4,6 +4,8 @@ const Allocator = std.mem.Allocator;
 const Token = @import("token.zig").Token;
 const Literal = @import("token.zig").Literal;
 const TokenType = @import("token.zig").TokenType;
+const Scanner = @import("scanner.zig").Scanner;
+const testing = std.testing;
 
 // expression     → literal
 //                | unary
@@ -39,8 +41,8 @@ const Expr = union(enum) {
 };
 
 const ParserError = error{
-    outOfBoundsPeek,
-    unclosedParen,
+    SyntaxError,
+    OutOfMemory,
 };
 
 const Parser = struct {
@@ -58,12 +60,21 @@ const Parser = struct {
         self.tokens.deinit(allocator);
     }
 
-    fn advance(self: *Parser) !void {
-        if (self.curr >= self.tokens.len - 1) return ParserError.outOfBoundsPeek;
+    // TODO:  this needs to return an AST or the error i will need to provide the col and row with the error
+    fn parse(allocator: Allocator, scanner: Scanner) !void {
+        const parser: Parser = Parser.init();
+        parser.tokens = scanner.items;
+        parser.deinit(allocator);
+        while (parser.curr < parser.tokens.items.len) {
+            try parser.expression(allocator);
+        }
+    }
+
+    fn advance(self: *Parser) void {
         self.curr += 1;
     }
 
-    fn matchNext(self: Parser, types: []TokenType) void {
+    fn matchNext(self: Parser, types: []const TokenType) bool {
         for (types) |t_type| {
             if (self.tokens.items[self.curr].t_type == t_type) {
                 return true;
@@ -73,22 +84,25 @@ const Parser = struct {
     }
 
     // expression     → equality ;
-    fn expression(self: *Parser) Expr {
-        return self.equality();
+    fn expression(self: *Parser, allocator: Allocator) ParserError!Expr {
+        return try self.equality(allocator);
     }
 
     // equality       → comparison ( ( "!=" | "==" ) comparison )* ;
-    fn equality(self: *Parser) !Expr {
-        var expr: Expr = try self.comparasion();
-        try self.advance();
-        while (self.matchNext(.{ TokenType.EQUAL_EQUAL, TokenType.BANG_EQUAL })) {
+    fn equality(self: *Parser, allocator: Allocator) !Expr {
+        var expr: Expr = try self.comparison(allocator);
+        while (self.matchNext(&.{ TokenType.EQUAL_EQUAL, TokenType.BANG_EQUAL })) {
             const op: Token = self.tokens.items[self.curr];
-            try self.advance();
-            const right: Expr = self.comparison();
+            self.advance();
+            const right: Expr = try self.comparison(allocator);
+            const left_ptr = try allocator.create(Expr);
+            const right_ptr = try allocator.create(Expr);
+            left_ptr.* = expr;
+            right_ptr.* = right;
             expr = .{ .binary = .{
-                .left = expr,
+                .left = left_ptr,
                 .operator = op,
-                .right = right,
+                .right = right_ptr,
             } };
         }
         return expr;
@@ -96,101 +110,122 @@ const Parser = struct {
 
     // comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
     //                | primary ;
-    fn comparison(self: *Parser) !Expr {
-        var expr = try self.terminal();
-        try self.advance();
-        while (self.matchNext(.{ TokenType.GREATER, TokenType.LESS, TokenType.GREATER_EQUAL, TokenType.LESS_EQUAL })) {
+    fn comparison(self: *Parser, allocator: Allocator) !Expr {
+        var expr = try self.terminal(allocator);
+        while (self.matchNext(&.{ TokenType.GREATER, TokenType.LESS, TokenType.GREATER_EQUAL, TokenType.LESS_EQUAL })) {
             const op: Token = self.tokens.items[self.curr];
-            try self.advance();
-            const right: Expr = self.terminal();
+            self.advance();
+            const right: Expr = try self.terminal(allocator);
+            const left_ptr = try allocator.create(Expr);
+            const right_ptr = try allocator.create(Expr);
+            left_ptr.* = expr;
+            right_ptr.* = right;
             expr = .{ .binary = .{
-                .left = expr,
+                .left = left_ptr,
                 .operator = op,
-                .right = right,
+                .right = right_ptr,
             } };
         }
         return expr;
     }
 
     // term           → factor ( ( "-" | "+" ) factor )* ;
-    fn terminal(self: *Parser) !Expr {
-        var expr = !self.factor();
-        try self.advance();
-        while (self.matchNext(.{ TokenType.MINUS, TokenType.PLUS })) {
+    fn terminal(self: *Parser, allocator: Allocator) !Expr {
+        var expr = try self.factor(allocator);
+        while (self.matchNext(&.{ TokenType.MINUS, TokenType.PLUS })) {
             const op: Token = self.tokens.items[self.curr];
-            try self.advance();
-            const right: Expr = self.factor();
+            self.advance();
+            const right: Expr = try self.factor(allocator);
+            const left_ptr = try allocator.create(Expr);
+            const right_ptr = try allocator.create(Expr);
+            left_ptr.* = expr;
+            right_ptr.* = right;
             expr = .{ .binary = .{
-                .left = expr,
+                .left = left_ptr,
                 .operator = op,
-                .right = right,
+                .right = right_ptr,
             } };
         }
         return expr;
     }
 
     // factor         → unary ( ( "/" | "*" ) unary )* ;
-    fn factor(self: *Parser) !Expr {
-        var expr = !self.unary();
-        try self.advance();
-        while (self.matchNext(.{ .EQUAL_EQUAL, .BANG_EQUAL })) {
+    fn factor(self: *Parser, allocator: Allocator) !Expr {
+        var expr = try self.unary(allocator);
+        while (self.matchNext(&.{ TokenType.STAR, TokenType.SLASH })) {
             const op: Token = self.tokens.items[self.curr];
-            try self.advance();
-            const right: Expr = self.unary();
+            self.advance();
+            const right: Expr = try self.unary(allocator);
+
+            const left_ptr = try allocator.create(Expr);
+            const right_ptr = try allocator.create(Expr);
+            left_ptr.* = expr;
+            right_ptr.* = right;
+
             expr = .{ .binary = .{
-                .left = expr,
+                .left = left_ptr,
                 .operator = op,
-                .right = right,
+                .right = right_ptr,
             } };
         }
         return expr;
     }
 
     // unary          → ( "!" | "-" ) unary
-    fn unary(self: *Parser) !Expr {
-        if (self.matchNext(.{ TokenType.BANG, TokenType.MINUS })) {
+    fn unary(self: *Parser, allocator: Allocator) !Expr {
+        if (self.matchNext(&.{ TokenType.BANG, TokenType.MINUS })) {
             const op: Token = self.tokens.items[self.curr];
-            try self.advance();
-            const right: Expr = self.unary();
-            const expr = .{ .unary = .{
+            self.advance();
+            const right: Expr = try self.unary(allocator);
+
+            const right_ptr = try allocator.create(Expr);
+            right_ptr.* = right;
+
+            const expr: Expr = .{ .unary = .{
                 .operator = op,
-                .right = right,
+                .right = right_ptr,
             } };
             return expr;
         }
-        return self.primary();
+        return try self.primary(allocator);
     }
 
     // primary        → NUMBER | STRING | "true" | "false" | "nil"
     //                | "(" expression ")" ;
-    fn primary(self: *Parser) !Expr {
-        if (self.matchNext(.{TokenType.FALSE})) {
-            try self.advance();
+    fn primary(self: *Parser, allocator: Allocator) !Expr {
+        if (self.matchNext(&.{TokenType.FALSE})) {
+            self.advance();
             return Expr{ .literal = Literal{ .boolean = false } };
         }
-        if (try self.matchNext(.{TokenType.TRUE})) {
-            try self.advance();
-            return Expr{ .literal = Literal{ .boolean = false } };
+        if (self.matchNext(&.{TokenType.TRUE})) {
+            self.advance();
+            return Expr{ .literal = Literal{ .boolean = true } };
         }
-        if (try self.matchNext(.{TokenType.NULL})) {
-            try self.advance();
-            return Expr{ .literal = Literal{ .boolean = false } };
+        if (self.matchNext(&.{TokenType.NULL})) {
+            self.advance();
+            return Expr{ .literal = Literal{ .none = {} } };
         }
 
-        if (try self.matchNext(.{ TokenType.STRING, TokenType.NUMBER })) {
-            return self.tokens.items[self.curr].literal;
+        if (self.matchNext(&.{ TokenType.STRING, TokenType.NUMBER })) {
+            const expr = Expr{ .literal = self.tokens.items[self.curr].literal };
+            self.advance();
+            return expr;
         }
 
-        if (try self.matchNext(.{TokenType.LEFT_PAREN})) {
-            const inner_expr = try self.expression();
-            if (!try self.matchNext(.{.RIGHT_PAREN})) {
-                return ParserError.unclosedParen;
+        if (self.matchNext(&.{TokenType.LEFT_PAREN})) {
+            const inner_expr = try self.expression(allocator);
+            if (self.matchNext(&.{.RIGHT_PAREN})) {
+                return ParserError.SyntaxError;
             }
+            self.advance();
+            const inner_ptr = try allocator.create(Expr);
+            inner_ptr.* = inner_expr;
             return Expr{
                 .grouping = .{
-                    .expression = inner_expr,
+                    .expression = inner_ptr,
                 },
             };
         }
+        return ParserError.SyntaxError;
     }
 };
