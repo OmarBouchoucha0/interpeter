@@ -1,6 +1,7 @@
 const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;
 const Literal = @import("token.zig").Literal;
+const reportError = @import("token.zig").reportError;
 const std = @import("std");
 const ArrayListUnmanaged = std.ArrayListUnmanaged;
 const Allocator = std.mem.Allocator;
@@ -8,7 +9,6 @@ const testing = std.testing;
 
 const ScannerErrors = error{
     unClosedString,
-    unknownToken,
 };
 
 const Scanner = struct {
@@ -28,6 +28,25 @@ const Scanner = struct {
 
     pub fn addToken(self: *Scanner, allocator: Allocator, token: Token) !void {
         try self.items.append(allocator, token);
+    }
+    pub fn scan(allocator: Allocator, writer: *std.Io.Writer, source: []const u8) !void {
+        const scanner = Scanner.init(source);
+        // TODO: create a helper function that tries to find the position of start of the string
+        //  i dont think printing the entier string is a good idea so maybe we can change ther report error function a bit to
+        //  accomodate for this
+        _ = scanner.scanSource(allocator) catch |err| switch (err) {
+            ScannerErrors.unClosedString => {
+                const token = Token{
+                    .t_type = TokenType.STRING,
+                    .lexem = string,
+                    .literal = Literal{ .string = string[1 .. string.len - 1] },
+                    .col = col,
+                    .row = row,
+                };
+                reportError(writer, token, "unclosd string");
+            },
+            else => |e| return e,
+        };
     }
 
     pub fn scanSource(self: *Scanner, allocator: Allocator) !void {

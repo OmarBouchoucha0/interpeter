@@ -72,3 +72,13 @@ pub const Token = struct {
         }
     }
 };
+
+pub fn reportError(writer: *std.Io.Writer, token: Token, message: []const u8) !void {
+    writer.print("Error [{d}:{d}] at '{s}': {s}\n", .{
+        token.row,
+        token.col,
+        token.lexem,
+        message,
+    }) catch {};
+    try writer.flush();
+}
