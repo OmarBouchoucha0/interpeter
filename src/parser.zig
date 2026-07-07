@@ -21,7 +21,7 @@ const stdout = std.Io.File.stdout();
 // binary         → expression operator expression ;
 // operator       → "==" | "!=" | "<" | "<=" | ">" | ">="
 //                | "+"  | "-"  | "*" | "/" ;
-const Expr = union(enum) {
+pub const Expr = union(enum) {
     literal: Literal,
 
     // prefix expr like !boolean or -num
