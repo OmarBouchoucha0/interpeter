@@ -14,51 +14,51 @@ const ScannerErrors = error{
 const Scanner = struct {
     source: []const u8,
     items: ArrayListUnmanaged(Token),
+    var col: usize = 1;
+    var row: usize = 1;
 
-    pub fn init(source: []const u8) Scanner {
+    fn init(source: []const u8) Scanner {
         return Scanner{
             .source = source,
             .items = ArrayListUnmanaged(Token).empty,
         };
     }
 
-    pub fn deinit(self: *Scanner, allocator: Allocator) void {
+    fn deinit(self: *Scanner, allocator: Allocator) void {
         self.items.deinit(allocator);
     }
 
-    pub fn addToken(self: *Scanner, allocator: Allocator, token: Token) !void {
+    fn addToken(self: *Scanner, allocator: Allocator, token: Token) !void {
         try self.items.append(allocator, token);
     }
-    pub fn scan(allocator: Allocator, writer: *std.Io.Writer, source: []const u8) !void {
-        const scanner = Scanner.init(source);
-        // TODO: create a helper function that tries to find the position of start of the string
-        //  i dont think printing the entier string is a good idea so maybe we can change ther report error function a bit to
-        //  accomodate for this
-        _ = scanner.scanSource(allocator) catch |err| switch (err) {
+
+    pub fn scan(self: *Scanner, allocator: Allocator, writer: *std.Io.Writer, source: []const u8) !void {
+        self.init(source);
+        defer self.deinit(allocator);
+        _ = self.scanSource(allocator) catch |err| switch (err) {
             ScannerErrors.unClosedString => {
-                const token = Token{
-                    .t_type = TokenType.STRING,
-                    .lexem = string,
-                    .literal = Literal{ .string = string[1 .. string.len - 1] },
-                    .col = col,
-                    .row = row,
-                };
-                reportError(writer, token, "unclosd string");
+                self.reportStringError(writer, row, col);
             },
             else => |e| return e,
         };
     }
 
-    pub fn scanSource(self: *Scanner, allocator: Allocator) !void {
+    fn reportStringError(writer: *std.Io.Writer) !void {
+        writer.print("Error [{d}:{d}] unClosedString\n", .{
+            row,
+            col,
+        }) catch {};
+        try writer.flush();
+    }
+
+    fn scanSource(self: *Scanner, allocator: Allocator) !void {
         var start: usize = 0;
         var curr: usize = 0;
-        var row: usize = 1;
-        var col: usize = 1;
         var prev_lines_len: usize = 0;
         while (curr < self.source.len) {
             if (!std.ascii.isAlphanumeric(self.source[curr])) {
                 col = start - prev_lines_len;
-                try self.scanToken(allocator, self.source[start..curr], row, col);
+                try self.scanToken(allocator, self.source[start..curr]);
                 switch (self.source[curr]) {
                     ' ', '\r', '\t' => {
                         // Do nothing! Let it fall through to curr += 1 at the end of the block.
@@ -70,6 +70,7 @@ const Scanner = struct {
                     },
                     '"' => {
                         start = curr;
+                        col = start;
                         if (curr == self.source.len - 1) {
                             return ScannerErrors.unClosedString;
                         }
@@ -80,21 +81,20 @@ const Scanner = struct {
                             }
                             curr += 1;
                         }
-                        col = start;
-                        try self.scanToken(allocator, self.source[start .. curr + 1], row, col);
+                        try self.scanToken(allocator, self.source[start .. curr + 1]);
                     },
                     '!', '>', '<', '=' => {
                         col += 1;
                         if (curr < self.source.len - 1 and self.source[curr + 1] == '=') {
-                            try self.scanToken(allocator, self.source[curr .. curr + 2], row, col);
+                            try self.scanToken(allocator, self.source[curr .. curr + 2]);
                             curr += 1; // Advance past the '='
                         } else {
-                            try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
+                            try self.scanToken(allocator, self.source[curr .. curr + 1]);
                         }
                     },
                     else => {
                         col += 1;
-                        try self.scanToken(allocator, self.source[curr .. curr + 1], row, col);
+                        try self.scanToken(allocator, self.source[curr .. curr + 1]);
                     },
                 }
                 curr += 1;
@@ -114,7 +114,7 @@ const Scanner = struct {
         try self.addToken(allocator, eof_token);
     }
 
-    fn scanString(self: *Scanner, allocator: Allocator, string: []const u8, row: usize, col: usize) !void {
+    fn scanString(self: *Scanner, allocator: Allocator, string: []const u8) !void {
         const token = Token{
             .t_type = TokenType.STRING,
             .lexem = string,
@@ -125,7 +125,7 @@ const Scanner = struct {
         try self.addToken(allocator, token);
     }
 
-    fn scanNumber(self: *Scanner, allocator: Allocator, number: []const u8, row: usize, col: usize) !void {
+    fn scanNumber(self: *Scanner, allocator: Allocator, number: []const u8) !void {
         const token = Token{
             .t_type = TokenType.NUMBER,
             .lexem = number,
@@ -136,13 +136,13 @@ const Scanner = struct {
         try self.addToken(allocator, token);
     }
 
-    fn scanToken(self: *Scanner, allocator: Allocator, input: []const u8, row: usize, col: usize) !void {
+    fn scanToken(self: *Scanner, allocator: Allocator, input: []const u8) !void {
         if (input.len <= 0) {
             return;
         }
 
         if (input[input.len - 1] == '"' and input[0] == '"') {
-            try scanString(self, allocator, input, row, col);
+            try scanString(self, allocator, input);
             return;
         }
 
@@ -154,7 +154,7 @@ const Scanner = struct {
             }
         }
         if (numeric) {
-            try scanNumber(self, allocator, input, row, col);
+            try scanNumber(self, allocator, input);
             return;
         }
 

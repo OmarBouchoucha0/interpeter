@@ -15,7 +15,7 @@ const stdout = std.Io.File.stdout();
 //                | binary
 //                | grouping ;
 //
-// literal        → NUMBER | STRING | "true" | "false" | "nil" ;
+// literal        → NUMBER | STRING | "true" | "false" | "nulll" ;
 // grouping       → "(" expression ")" ;
 // unary          → ( "-" | "!" ) expression ;
 // binary         → expression operator expression ;
@@ -65,9 +65,15 @@ const Parser = struct {
     }
 
     // TODO:  this needs to return an AST or the error i will need to provide the col and row with the error
-    fn parse(allocator: Allocator, writer: *std.Io.Writer, scanner: Scanner) !void {
+    fn parse(allocator: Allocator, writer: *std.Io.Writer, source: []const u8) !void {
         const parser: Parser = Parser.init();
-        try scanner.scanSource(allocator);
+        defer parser.deinit(allocator);
+        const scanner: Scanner = undefined;
+        try scanner.scan(
+            allocator,
+            writer,
+            source,
+        );
         parser.tokens = scanner.items;
         while (parser.curr < parser.tokens.items.len) {
             _ = parser.expression(allocator, writer) catch |err| switch (err) {
@@ -210,7 +216,7 @@ const Parser = struct {
         return try self.primary(allocator, writer);
     }
 
-    // primary        → NUMBER | STRING | "true" | "false" | "nil"
+    // primary        → NUMBER | STRING | "true" | "false" | "null"
     //                | "(" expression ")" ;
     fn primary(self: *Parser, allocator: Allocator, writer: *std.Io.Writer) !Expr {
         if (self.match(&.{TokenType.FALSE})) {
