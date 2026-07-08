@@ -17,6 +17,7 @@ pub const Value = union(enum) {
 
 pub const RuntimeError = error{
     RuntimeTypeError,
+    DivisionByZero,
 };
 
 const Interpreter = struct {
@@ -49,7 +50,7 @@ const Interpreter = struct {
         switch (expr.unary.operator.t_type) {
             TokenType.MINUS => {
                 if (right_value != .number) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 return Value{ .number = -right_value.number };
             },
@@ -69,70 +70,73 @@ const Interpreter = struct {
         switch (expr.binary.operator.t_type) {
             TokenType.PLUS => {
                 if (right_value != .number and left_value != .number) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 const result = right_value.number + left_value.number;
                 return Value{ .number = result };
             },
             TokenType.MINUS => {
                 if (right_value != .number and left_value != .number) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 const result = right_value.number - left_value.number;
                 return Value{ .number = result };
             },
             TokenType.STAR => {
                 if (right_value != .number and left_value != .number) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 const result = right_value.number * left_value.number;
                 return Value{ .number = result };
             },
             TokenType.SLASH => {
                 if (right_value != .number and left_value != .number) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
+                }
+                if (left_value.number == 0) {
+                    return RuntimeError.DivisionByZero;
                 }
                 const result = right_value.number / left_value.number;
                 return Value{ .number = result };
             },
             TokenType.GREATER => {
                 if (right_value != .boolean and left_value != .boolean) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 const result = right_value.boolean > left_value.boolean;
                 return Value{ .boolean = result };
             },
             TokenType.GREATER_EQUAL => {
                 if (right_value != .boolean and left_value != .boolean) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 const result = right_value.boolean >= left_value.boolean;
                 return Value{ .boolean = result };
             },
             TokenType.LESS => {
                 if (right_value != .boolean and left_value != .boolean) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 const result = right_value.boolean < left_value.boolean;
                 return Value{ .boolean = result };
             },
             TokenType.LESS_EQUAL => {
                 if (right_value != .boolean and left_value != .boolean) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 const result = right_value.boolean <= left_value.boolean;
                 return Value{ .boolean = result };
             },
             TokenType.BANG_EQUAL => {
                 if (right_value != .boolean and left_value != .boolean) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 const result = right_value.boolean != left_value.boolean;
                 return Value{ .boolean = result };
             },
             TokenType.EQUAL_EQUAL => {
                 if (right_value != .boolean and left_value != .boolean) {
-                    return error.RuntimeTypeError;
+                    return RuntimeError.RuntimeTypeError;
                 }
                 const result = right_value.boolean == left_value.boolean;
                 return Value{ .boolean = result };
