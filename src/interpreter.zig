@@ -21,16 +21,23 @@ pub const RuntimeError = error{
 };
 
 const Interpreter = struct {
-    fn evalExpression(expr: Expr) void {
-        return expr.literal;
+    fn evaluate(expr: Expr) !Value {
+        return switch (expr) {
+            .binary => evalBinaryExpression(expr),
+            .unary => evalUnaryExpression(expr),
+            .grouping => evalGroupingExpression(expr),
+            .literal => |lit| switch (lit) {
+                .number => |n| Value{ .number = n },
+                .boolean => |b| Value{ .boolean = b },
+                .none => Value{ .none = {} },
+            },
+        };
     }
 
-    fn evaluate(expr: Expr) !Value {}
-
-    fn isTruthy(expression: Literal) bool {
-        return switch (expression) {
+    fn isTruthy(value: Value) bool {
+        return switch (value) {
             .none => false,
-            .boolean => |b| return b,
+            .boolean => |b| b,
             .number => |n| {
                 if (n == 0) {
                     return false;
@@ -62,88 +69,108 @@ const Interpreter = struct {
     }
 
     fn evalBinaryExpression(expr: Expr) !Value {
-        const right_node = expr.binary.right;
-        const right_value = try evaluate(right_node.*);
         const left_node = expr.binary.left;
         const left_value = try evaluate(left_node.*);
+        const right_node = expr.binary.right;
+        const right_value = try evaluate(right_node.*);
 
         switch (expr.binary.operator.t_type) {
             TokenType.PLUS => {
-                if (right_value != .number and left_value != .number) {
+                if (right_value != .number or left_value != .number) {
                     return RuntimeError.RuntimeTypeError;
                 }
-                const result = right_value.number + left_value.number;
+                const result = left_value.number + right_value.number;
                 return Value{ .number = result };
             },
             TokenType.MINUS => {
-                if (right_value != .number and left_value != .number) {
+                if (right_value != .number or left_value != .number) {
                     return RuntimeError.RuntimeTypeError;
                 }
-                const result = right_value.number - left_value.number;
+                const result = left_value.number - right_value.number;
                 return Value{ .number = result };
             },
             TokenType.STAR => {
-                if (right_value != .number and left_value != .number) {
+                if (right_value != .number or left_value != .number) {
                     return RuntimeError.RuntimeTypeError;
                 }
-                const result = right_value.number * left_value.number;
+                const result = left_value.number * right_value.number;
                 return Value{ .number = result };
             },
             TokenType.SLASH => {
-                if (right_value != .number and left_value != .number) {
+                if (right_value != .number or left_value != .number) {
                     return RuntimeError.RuntimeTypeError;
                 }
-                if (left_value.number == 0) {
+                if (right_value.number == 0) {
                     return RuntimeError.DivisionByZero;
                 }
-                const result = right_value.number / left_value.number;
+                const result = left_value.number / right_value.number;
                 return Value{ .number = result };
             },
             TokenType.GREATER => {
-                if (right_value != .boolean and left_value != .boolean) {
+                if (right_value != .number or left_value != .number) {
                     return RuntimeError.RuntimeTypeError;
                 }
-                const result = right_value.boolean > left_value.boolean;
+                const result = left_value.number > right_value.number;
                 return Value{ .boolean = result };
             },
             TokenType.GREATER_EQUAL => {
-                if (right_value != .boolean and left_value != .boolean) {
+                if (right_value != .number or left_value != .number) {
                     return RuntimeError.RuntimeTypeError;
                 }
-                const result = right_value.boolean >= left_value.boolean;
+                const result = left_value.number >= right_value.number;
                 return Value{ .boolean = result };
             },
             TokenType.LESS => {
-                if (right_value != .boolean and left_value != .boolean) {
+                if (right_value != .number or left_value != .number) {
                     return RuntimeError.RuntimeTypeError;
                 }
-                const result = right_value.boolean < left_value.boolean;
+                const result = left_value.number < right_value.number;
                 return Value{ .boolean = result };
             },
             TokenType.LESS_EQUAL => {
-                if (right_value != .boolean and left_value != .boolean) {
+                if (right_value != .number or left_value != .number) {
                     return RuntimeError.RuntimeTypeError;
                 }
-                const result = right_value.boolean <= left_value.boolean;
+                const result = left_value.number <= right_value.number;
                 return Value{ .boolean = result };
             },
             TokenType.BANG_EQUAL => {
-                if (right_value != .boolean and left_value != .boolean) {
-                    return RuntimeError.RuntimeTypeError;
+                if (right_value == .number and left_value == .number) {
+                    const result = left_value.number != right_value.number;
+                    return Value{ .boolean = result };
+                } else {
+                    if (right_value == .boolean and left_value == .boolean) {
+                        const result = left_value.boolean != right_value.boolean;
+                        return Value{ .boolean = result };
+                    } else {
+                        if ((right_value == .none or left_value == .none) and (left_value != right_value)) {
+                            return Value{ .boolean = true };
+                        }
+                    }
                 }
-                const result = right_value.boolean != left_value.boolean;
-                return Value{ .boolean = result };
+                return Value{ .boolean = false };
             },
             TokenType.EQUAL_EQUAL => {
-                if (right_value != .boolean and left_value != .boolean) {
-                    return RuntimeError.RuntimeTypeError;
+                if (right_value == .number and left_value == .number) {
+                    const result = left_value.number == right_value.number;
+                    return Value{ .boolean = result };
+                } else {
+                    if (right_value == .boolean and left_value == .boolean) {
+                        const result = left_value.boolean == right_value.boolean;
+                        return Value{ .boolean = result };
+                    } else {
+                        if (right_value == .none and left_value == .none) {
+                            return Value{ .boolean = true };
+                        }
+                    }
                 }
-                const result = right_value.boolean == left_value.boolean;
-                return Value{ .boolean = result };
+                return Value{ .boolean = false };
             },
             else => unreachable,
         }
     }
 
-    fn evalGroupingExpression(expr: Expr) !Value {}
+    fn evalGroupingExpression(expr: Expr) !Value {
+        return try evaluate(expr.grouping.expression.*);
+    }
 };
